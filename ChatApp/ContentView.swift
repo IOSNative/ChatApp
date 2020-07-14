@@ -12,6 +12,7 @@ import FirebaseStorage
 import FirebaseFirestore
 
 var str: String?
+var checkUser: Bool = true
 
 struct ContentView: View {
     
@@ -96,7 +97,7 @@ struct FirstPage: View {
                     Button(action: {
                         
                         //remove Auth when testing with real phone number
-                        Auth.auth().settings?.isAppVerificationDisabledForTesting = true
+                        //Auth.auth().settings?.isAppVerificationDisabledForTesting = true
                         
                         PhoneAuthProvider.provider().verifyPhoneNumber("+" + self.no + self.code, uiDelegate: nil){
                             
@@ -201,9 +202,21 @@ struct SecondPage: View
                                 
                                 NotificationCenter.default.post(name: NSNotification.Name("statusChange"), object: nil)
                                 
-                                addUser(phoneNumber: str!)
-                                
-                                self.loading.toggle()
+                                let db = Firestore.firestore()
+                                //read
+                                db.collection("users").getDocuments() { (querySnapshot, err) in
+                                    if let err = err {
+                                        print("Error getting documents: \(err)")
+                                    } else {
+                                        for document in querySnapshot!.documents {
+                                            if document.data()["phoneNumber"] as? String == str {
+                                                return
+                                            }
+                                        }
+                                        
+                                        addUser(phoneNumber: str!)
+                                    }
+                                }
                                 
                             }
                         
@@ -257,22 +270,12 @@ struct Home: View {
 
 func addUser(phoneNumber: String){
     let db = Firestore.firestore()
-    
+
     //add
     db.collection("users").addDocument(data: [
         "phoneNumber": phoneNumber,
     ])
-    
-    //read
-    db.collection("users").getDocuments() { (querySnapshot, err) in
-        if let err = err {
-            print("Error getting documents: \(err)")
-        } else {
-            for document in querySnapshot!.documents {
-                print("\(document.data())")
-            }
-        }
-    }
+
 }
 
 struct Indicator : UIViewRepresentable {
