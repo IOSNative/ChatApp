@@ -20,6 +20,7 @@ struct SecondPageView: View {
     @State var mgs = ""
     @State var alert = false
     @State var loading = false
+    @State var creation = false
     
     var body: some View {
         
@@ -58,7 +59,8 @@ struct SecondPageView: View {
                     else {
                         Button(action: {
                             
-                            self.loading.toggle()
+                             //self.loading.toggle()
+                            //self.creation.toggle()
                             
                             let credential =
                                 PhoneAuthProvider.provider().credential(withVerificationID: self.ID, verificationCode: self.code)
@@ -75,26 +77,22 @@ struct SecondPageView: View {
                                 
                                 }
                                 
-                                UserDefaults.standard.set(true, forKey: "status")
-                                
-                                NotificationCenter.default.post(name: NSNotification.Name("statusChange"), object: nil)
-                                
-                                let db = Firestore.firestore()
-                                //read
-                                db.collection("users").getDocuments() { (querySnapshot, err) in
-                                    if let err = err {
-                                        print("Error getting documents: \(err)")
-                                    } else {
-                                        for document in querySnapshot!.documents {
-                                            if document.data()["phoneNumber"] as? String == str {
-                                                return
-                                            }
-                                        }
-                                        
-                                        addUser(phoneNumber: str!)
-                                    }
-                                }
-                                
+//                                checkUser { (exists, user) in
+//
+//                                    if exists {
+//                                        print("ok")
+//                                        UserDefaults.standard.set(true, forKey: "status")
+//
+//                                        NotificationCenter.default.post(name: NSNotification.Name("statusChange"), object: nil)
+//                                    }
+//
+//                                    else {
+//                                        self.loading.toggle()
+//                                        self.creation.toggle()
+//                                    }
+//                                }
+                                self.loading.toggle()
+                                self.creation.toggle()
                             }
                         
                         }){
@@ -117,8 +115,37 @@ struct SecondPageView: View {
                     Alert(title: Text("Error"), message: Text(self.mgs), dismissButton: .default(Text("OK")))
                     
                 }
+                .sheet(isPresented: self.$creation, content: {
+                    AccountCreationView()
+                })
                 
             }
         }
     }
+}
+
+func checkUser(completion: @escaping (Bool,String)->Void){
+     
+    let db = Firestore.firestore()
+    
+    db.collection("users").getDocuments { (snap, err) in
+        
+        if err != nil{
+            
+            print((err?.localizedDescription)!)
+            return
+        }
+        
+        for i in snap!.documents {
+            
+            if i.documentID == Auth.auth().currentUser?.uid{
+                
+                completion(true,i.get("name") as! String)
+                return
+            }
+        }
+        
+        completion(false,"")
+    }
+    
 }

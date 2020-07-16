@@ -7,13 +7,18 @@
 //
 
 import SwiftUI
+import FirebaseAuth
+import FirebaseStorage
+import FirebaseFirestore
 
 struct AccountCreationView: View {
     
     @State var picker = false
     @State var name = ""
-    @State var image: Image?
-    @State var inputImage: UIImage?
+    @State var imgData : Data = .init(count: 0)
+    @State var loading = false
+    
+    @Environment(\.presentationMode) var presentationMode
     
     var body: some View {
         
@@ -23,7 +28,7 @@ struct AccountCreationView: View {
             Button(action: {
                 self.picker.toggle()
             }){
-                if image == nil {
+                if imgData.count == 0 {
                     
                     Image(systemName: "person.crop.circle.badge.plus")
                     .resizable()
@@ -31,13 +36,12 @@ struct AccountCreationView: View {
                     .foregroundColor(.gray)
                 
                 } else {
-                    image?
+                    Image(uiImage: UIImage(data: imgData)!)
+                    .renderingMode(.original) //load lại image
                     .resizable()
                     .frame(width: 90, height: 70)
                 }
-            }.sheet(isPresented: $picker, onDismiss: loadImage){
-                ImagePicker(image: self.$inputImage)
-              }
+            }
                 
             Text("Enter User Name")
                 .font(.body)
@@ -50,24 +54,45 @@ struct AccountCreationView: View {
             .background(Color.gray)
             .cornerRadius(10)
             
-            Button(action: {
+            if self.loading {
+                
+                HStack{
                     
-            }){
-                Text("Create").frame(width: UIScreen.main.bounds.width - 30, height: 50)
-            }.foregroundColor(.white)
-                .background(Color.orange)
-                .cornerRadius(10)
-                .padding(.top, 15)
-        }
-    }
-    
-    func loadImage(){
-    
-        guard let input = inputImage else {
-            return
-        }
+                    Spacer()
+                    
+                    Indicator()
+                    
+                    Spacer()
+                }
+            } else {
+                Button(action: {
+                    
+                    if self.name != "" {
+                        createUser(name: self.name, imagedata: self.imgData) {
+                            (status) in
 
-        image = Image(uiImage: input)
+                            if status {
+                                //self.loading.toggle()
+                                self.presentationMode.wrappedValue.dismiss()
+                                
+                                UserDefaults.standard.set(true, forKey: "status")
+
+                                NotificationCenter.default.post(name: NSNotification.Name("statusChange"), object: nil)
+                            }
+                        }
+                    }
+                    
+                }){
+                    Text("Create").frame(width: UIScreen.main.bounds.width - 30, height: 50)
+                }.foregroundColor(.white)
+                    .background(Color.orange)
+                    .cornerRadius(10)
+                    .padding(.top, 15)
+                .sheet(isPresented: $picker){
+                  ImagePicker(imgData: self.$imgData)
+                }
+            }
+        }
     }
 }
 
@@ -88,6 +113,9 @@ struct Indicator : UIViewRepresentable {
 
 struct ImagePicker: UIViewControllerRepresentable {
     
+    @Binding var imgData: Data
+    @Environment(\.presentationMode) var presentationMode
+    
     class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
         
         let parent: ImagePicker
@@ -98,9 +126,9 @@ struct ImagePicker: UIViewControllerRepresentable {
         
         func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
             
-            if let uiImage = info[.originalImage] as? UIImage {
-                parent.image = uiImage
-            }
+            let uiImage = info[.originalImage] as? UIImage
+            let data = uiImage?.jpegData(compressionQuality: 0.45)
+            self.parent.imgData = data!
             
             parent.presentationMode.wrappedValue.dismiss()
         }
@@ -111,9 +139,6 @@ struct ImagePicker: UIViewControllerRepresentable {
         Coordinator(self)
     }
     
-    @Environment(\.presentationMode) var presentationMode
-    @Binding var image: UIImage?
-    
     func makeUIViewController(context: UIViewControllerRepresentableContext<ImagePicker>) -> UIImagePickerController {
         let picker = UIImagePickerController()
         picker.delegate = context.coordinator
@@ -122,6 +147,43 @@ struct ImagePicker: UIViewControllerRepresentable {
     
     func updateUIViewController(_ uiViewController: UIImagePickerController, context: UIViewControllerRepresentableContext<ImagePicker>) {
         
+    }
+}
+
+func createUser(name: String,imagedata : Data,completion : @escaping (Bool)-> Void){
+    let db = Firestore.firestore()
+    
+    let storage = Storage.storage().reference()
+    
+    let uid = Auth.auth().currentUser?.uid
+    
+    storage.child("profilepics").child(uid!).putData(imagedata, metadata: nil) { (_, err) in
+        
+        if err != nil {
+            
+            print((err?.localizedDescription)!)
+            return
+        }
+        
+        storage.child("profilepics").child(uid!).downloadURL { (url, err) in
+            
+            if err != nil {
+                
+                print((err?.localizedDescription)!)
+                return
+            }
+            
+            db.collection("users").document(uid!).setData(["name":name,"image":"\(url!)","uid":uid!]) { (err) in
+                
+                if err != nil{
+                    
+                    print((err?.localizedDescription)!)
+                    return
+                }
+                
+                completion(true)
+            }
+        }
     }
 }
 
